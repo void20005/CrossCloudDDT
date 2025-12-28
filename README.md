@@ -1,9 +1,21 @@
-# CrossCloudDDT (Data Driven Testing)
+# CrossCloudDDT
 
-**CrossCloudDDT** is a robust, Data-Driven Framework for End-to-End Testing across **Salesforce Sales Cloud** and **Marketing Cloud**.
+**End-to-End Testing Framework for Salesforce Cross-Cloud Integrations**
 
-> **Philosophy**: Data defines the Cross-Cloud Scenario. 
-> Instead of hardcoding test data, you define complex hierarchies in CSVs, and the framework orchestrates them across clouds, handling dependencies, consents, and integrations.
+> 🎯 **Vision**: Define test scenarios as CSV data, not hardcoded scripts. The framework orchestrates complex Sales Cloud ↔ Marketing Cloud workflows, handling dependencies, consents, and validations automatically.
+
+---
+
+## 📦 Current Status: v0.1 (Data Factory)
+
+| Component | Status | Description |
+|-----------|--------|-------------|
+| **Data Factory** | ✅ Ready | CSV → Salesforce Bulk API with smart linking |
+| **Handler Architecture** | ✅ Ready | Object-specific logic (cascade deletes, consents) |
+| **Consent Management** | ✅ Ready | Individual & CPTC automation |
+| **Marketing Cloud** | 🚧 Planned | Data Extensions, Journey API |
+| **Test Assertions** | 🚧 Planned | Cross-cloud validation framework |
+| **Allure Reports** | 🚧 Planned | Rich test evidence & screenshots |
 
 ---
 
@@ -16,12 +28,22 @@ The engine (`src/data_factory.py`) is object-agnostic. It parses CSV headers to 
 *   **Idempotency (Upsert)**: Can safely re-run scenarios. Updates existing records instead of creating duplicates.
 
 ### 2. 🧠 Intelligent Automation
-*   **Consent Management**: Automatically handles GDPR/TCPR artifacts (`Individual`, `ContactPointTypeConsent`) created by Salesforce flows.
-*   **Cascade Cleanup**: Deletes complex hierarchies (`Account` → `Individual` → `CPTC`) to preventing data pollution.
+*   **Consent Management**: Automatically handles `Individual` and `ContactPointTypeConsent` records created by Salesforce flows.
+*   **Cascade Cleanup**: Deletes complex hierarchies (`Account` → `Individual` → `CPTC`) to prevent data pollution.
 *   **Return Fields**: Captures auto-generated values (like `AssetId` created by a trigger on `Vehicle`) for use in subsequent steps.
 
 ### 3. 🏗️ Handler Architecture
 Uses a Strategy Pattern (`src/handlers/`) to manage object-specific complexities (Side Effects, Triggers) without cluttering the core engine.
+
+---
+
+## 🚧 Roadmap
+
+- [ ] **Marketing Cloud Integration**: Data Extension CRUD, Journey Entry Events
+- [ ] **Cross-Cloud Assertions**: Validate MC received SC data correctly
+- [ ] **Allure Reporting**: Beautiful reports with evidence attachments
+- [ ] **Parallel Execution**: Speed up large test suites
+- [ ] **CI/CD Integration**: GitHub Actions workflows
 
 ---
 
