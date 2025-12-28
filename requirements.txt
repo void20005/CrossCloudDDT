@@ -1,0 +1,4 @@
+simple-salesforce
+python-dotenv
+pytest
+requests

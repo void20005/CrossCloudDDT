@@ -1,0 +1,26 @@
+# Environments
+.env
+.env.*
+.env.qa
+.env.stage
+venv/
+ENV/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+
+# Pytest
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+
+# data files
+data/
+*.csv
+.~lock.*

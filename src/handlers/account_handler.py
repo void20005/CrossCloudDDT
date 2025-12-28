@@ -1,0 +1,229 @@
+import time
+from .base_handler import BaseHandler
+
+class AccountHandler(BaseHandler):
+    def __init__(self, factory):
+        super().__init__(factory)
+        self.object_name = 'Account'
+
+    def get_immutable_fields(self):
+        return []
+
+    def delete_records(self, ids_to_delete):
+        """
+        Cascade delete for Accounts (Person Accounts):
+        1. Find Individuals
+        2. Find CPTC
+        3. Delete CPTC -> Account -> Individual
+        """
+        if not ids_to_delete: return
+        
+        # Deduplicate
+        ids_to_delete = list(set(ids_to_delete))
+        self.factory._log(f"      Found {len(ids_to_delete)} records to delete.", "INFO")
+        
+        # --- CASCADE LOOKUP ---
+        self.factory._log("      🔎 Checking for related Person Account artifacts (Individual, CPTC)...", "DEBUG")
+        
+        # 1. Get Individuals (PersonIndividualId) from Accounts
+        ind_ids = self.get_field_values_batch(
+            record_ids=ids_to_delete, 
+            field_name='PersonIndividualId'
+        )
+        
+        # 2. Get CPTC from Individuals
+        cptc_ids = self.get_child_records_batch(
+            parent_ids=ind_ids,
+            child_object='ContactPointTypeConsent',
+            foreign_key_field='PartyId'
+        )
+
+        # --- EXECUTION ---
+        # 1. CPTC
+        if cptc_ids:
+            try:
+                self.factory._log(f"      🗑️ Cascade Deleting {len(cptc_ids)} related CPTC records...", "INFO")
+                payload = [{"Id": x} for x in list(set(cptc_ids))]
+                self.sc.bulk.ContactPointTypeConsent.delete(payload)
+                self.factory._log(f"      ✅ Deleted related CPTC.", "SUCCESS")
+            except Exception as e:
+                self.factory._log(f"      ❌ Error deleting CPTC: {e}", "ERROR")
+
+        # 2. Account (Self)
+        super().delete_records(ids_to_delete)
+
+        # 3. Individual
+        if ind_ids:
+            try:
+                self.factory._log(f"      🗑️ Cascade Deleting {len(ind_ids)} related Individual records...", "INFO")
+                payload = [{"Id": x} for x in ind_ids]
+                self.sc.bulk.Individual.delete(payload)
+                self.factory._log(f"      ✅ Deleted related Individuals.", "SUCCESS")
+            except Exception as e:
+                self.factory._log(f"      ❌ Error deleting Individuals: {e}", "ERROR")
+
+
+    def after_insert_batch(self, batch_items, results, operation='insert'):
+        """
+        Handle Consents after Account creation/update.
+        """
+        # Call base (RETURN FIELDS)
+        super().after_insert_batch(batch_items, results, operation)
+        
+        # --- CONSENT LOGIC ---
+        # Detect if we need to process consents
+        acc_map_consents = {}
+        
+        # Check if consent fields are present in the batch rows
+        # We need to peek at one row
+        if not batch_items: return
+        first_row = batch_items[0]['metadata']['row_data']
+        consent_field_names = {'_HasOptedOutSolicit', '_EmailConsent', '_SMSConsent'}
+        has_consent_cols = any(n in first_row for n in consent_field_names)
+        
+        if has_consent_cols:
+            for i, res in enumerate(results):
+                if res['success']:
+                    real_id = res['id']
+                    item = batch_items[i]
+                    acc_map_consents[real_id] = item['metadata']['row_data']
+
+            if acc_map_consents:
+                 self._manage_consents(acc_map_consents)
+
+    def _manage_consents(self, account_map):
+        """
+        Internal logic to handle Consents for Accounts.
+        """
+        if not account_map: return
+
+        self.factory._log(f"   Managing Consents for {len(account_map)} Accounts (Bulk)...", "INFO")
+        account_ids = list(account_map.keys())
+        
+        # --- PHASE 1: Wait for Individuals ---
+        ind_map = {} # { individual_id: account_id }
+        
+        # Optimized polling (using BaseHandler helper?)
+        # BaseHandler has `get_field_values_batch`, but we need Map {IndId -> AccId}.
+        # Helper returns just values.
+        # Let's keep manual query loop for Mapping purposes.
+        
+        max_attempts_ind = 20
+        found_all = False
+        
+        for attempt in range(1, max_attempts_ind + 1):
+            missing_acc_ids = [aid for aid in account_ids if aid not in ind_map.values()]
+            if not missing_acc_ids:
+                found_all = True
+                break
+                
+            chunk_size = 200
+            for i in range(0, len(missing_acc_ids), chunk_size):
+                chunk = missing_acc_ids[i:i+chunk_size]
+                ids_str = "'" + "','".join(chunk) + "'"
+                try:
+                    q = f"SELECT Id, PersonIndividualId FROM Account WHERE Id IN ({ids_str})"
+                    res = self.sc.query_all(q)
+                    for r in res['records']:
+                        pid = r.get('PersonIndividualId')
+                        if pid:
+                            ind_map[pid] = r['Id']
+                except Exception as e:
+                    self.factory._log(f"      ⚠️ Warning checking Individuals: {e}", "WARN")
+
+            if len(ind_map) == len(account_ids):
+                found_all = True
+                break
+            
+            if attempt < max_attempts_ind:
+                time.sleep(1) # Fast poll
+        
+        if not ind_map:
+             self.factory._log("      ❌ No Individuals found. Skipping consents.", "ERROR")
+             return
+
+        # --- Update Individuals (HasOptedOutSolicit) ---
+        ind_updates = []
+        for ind_id, acc_id in ind_map.items():
+            row = account_map[acc_id]
+            dont_market_str = row.get('_HasOptedOutSolicit', '').upper()
+            if dont_market_str == 'TRUE':
+                ind_updates.append({"Id": ind_id, "HasOptedOutSolicit": True})
+        
+        if ind_updates:
+            try:
+                self.sc.bulk.Individual.update(ind_updates)
+                self.factory._log(f"      ⚙ Updated {len(ind_updates)} Individuals", "INFO")
+            except Exception as e:
+                self.factory._log(f"      ❌ Error updating Individuals: {e}", "ERROR")
+
+        # --- PHASE 2: Wait for CPTC ---
+        ind_ids = list(ind_map.keys())
+        cptc_map = {} # { ind_id: [cptc_records] }
+        
+        max_attempts_cptc = 15
+        
+        for attempt in range(1, max_attempts_cptc + 1):
+             # Check if we have CPTC for all inds?
+             # CPTC creation is async.
+             
+             # Identify which Inds we don't have CPTC for yet
+             missing_ind_ids = [iid for iid in ind_ids if iid not in cptc_map]
+             if not missing_ind_ids:
+                 break
+                 
+             chunk_size = 200
+             for i in range(0, len(missing_ind_ids), chunk_size):
+                 chunk = missing_ind_ids[i:i+chunk_size]
+                 ids_str = "'" + "','".join(chunk) + "'"
+                 try:
+                     q = f"SELECT Id, PartyId, EngagementChannelType.Name, PrivacyConsentStatus FROM ContactPointTypeConsent WHERE PartyId IN ({ids_str})"
+                     res = self.sc.query_all(q)
+                     for r in res['records']:
+                         pid = r['PartyId']
+                         if pid not in cptc_map: cptc_map[pid] = []
+                         cptc_map[pid].append(r)
+                 except Exception:
+                     pass
+             
+             if len(cptc_map) >= len(ind_ids):
+                 break
+             
+             if attempt < max_attempts_cptc:
+                 time.sleep(1)
+
+        # --- Prepare CPTC Updates ---
+        cptc_updates = []
+        for ind_id, records in cptc_map.items():
+            acc_id = ind_map.get(ind_id)
+            if not acc_id: continue
+            row = account_map[acc_id]
+            
+            # Helpers
+            def get_recs(channel):
+                return [r for r in records if r.get('EngagementChannelType') and r['EngagementChannelType']['Name'] == channel]
+            
+            # Email
+            for r in get_recs('Email'):
+                status = row.get('_EmailConsent', 'OptOut')
+                eff_date = row.get('_EffectiveTo__date')
+                upd = {"Id": r['Id'], "PrivacyConsentStatus": status}
+                if status == 'OptIn' and eff_date: upd["EffectiveTo"] = eff_date
+                elif status == 'OptOut': upd["EffectiveTo"] = None
+                cptc_updates.append(upd)
+            
+            # SMS
+            for r in get_recs('SMS'):
+                status = row.get('_SMSConsent', 'OptOut')
+                eff_date = row.get('_EffectiveTo__date')
+                upd = {"Id": r['Id'], "PrivacyConsentStatus": status}
+                if status == 'OptIn' and eff_date: upd["EffectiveTo"] = eff_date
+                elif status == 'OptOut': upd["EffectiveTo"] = None
+                cptc_updates.append(upd)
+
+        if cptc_updates:
+            try:
+                self.sc.bulk.ContactPointTypeConsent.update(cptc_updates)
+                self.factory._log(f"      ✅ Updated {len(cptc_updates)} CPTC records (Bulk)", "SUCCESS")
+            except Exception as e:
+                self.factory._log(f"      ❌ Error updating CPTC: {e}", "ERROR")
