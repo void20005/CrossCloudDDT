@@ -6,7 +6,7 @@ import csv
 from .handlers.base_handler import BaseHandler
 from .handlers.account_handler import AccountHandler
 from .handlers.vehicle_handler import VehicleHandler
-from .handlers.other_handlers import AssetHandler, VehicleDefinitionHandler, AssetAccountParticipantHandler
+from .handlers.other_handlers import AssetHandler, VehicleDefinitionHandler, AssetAccountParticipantHandler, LocationHandler
 
 # --- HANDLER REGISTRY ---
 # Register object-specific handlers here. Objects not in registry use BaseHandler.
@@ -16,6 +16,7 @@ HANDLER_REGISTRY = {
     'Asset': AssetHandler,
     'VehicleDefinition': VehicleDefinitionHandler,
     'AssetAccountParticipant': AssetAccountParticipantHandler,
+    'Location': LocationHandler,
 }
 
 class Auto360DataFactory:
@@ -27,6 +28,7 @@ class Auto360DataFactory:
     def _get_handler(self, object_name):
         """Factory method to get the appropriate handler for an object."""
         handler_class = HANDLER_REGISTRY.get(object_name, BaseHandler)
+        self._log(f"   Using handler: {handler_class.__name__} for {object_name}", "DEBUG")
         handler = handler_class(self)
         handler.object_name = object_name
         return handler 
@@ -371,6 +373,11 @@ class Auto360DataFactory:
             return
 
         for filename in files:
+            # Skip _update files during cleanup (they update existing records, not create new sets)
+            if '_update' in filename.lower():
+                self._log(f"   Skipping update file: {filename}", "DEBUG")
+                continue
+
             object_name = self._get_object_name(filename)
             full_path = os.path.join(abs_folder, filename)
             

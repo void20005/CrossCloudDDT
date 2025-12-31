@@ -23,4 +23,4 @@ __pycache__/
 # data files
 data/
 *.csv
-.~lock.*
+~lock.*

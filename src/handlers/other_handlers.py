@@ -67,3 +67,47 @@ class AssetAccountParticipantHandler(BaseHandler):
                 
             except Exception as e:
                  self.factory._log(f"      ❌ Force Update Failed: {e}", "ERROR")
+
+class LocationHandler(BaseHandler):
+    """
+    Handler for Location object.
+    Before deletion, clears VisitorAddressId to allow cascade delete of Address.
+    """
+    def __init__(self, factory):
+        super().__init__(factory)
+        self.object_name = 'Location'
+
+    def get_immutable_fields(self):
+        return []
+
+    def delete_records(self, ids_to_delete):
+        """
+        Delete Location with proper cleanup:
+        1. Clear VisitorAddressId field (removes FK constraint)
+        2. Delete Location (Address auto-deletes via SF cascade)
+        """
+        if not ids_to_delete: 
+            return
+        
+        ids_to_delete = list(set(ids_to_delete))
+        self.factory._log(f"      Found {len(ids_to_delete)} records to delete.", "INFO")
+
+        # --- STEP 1: Clear VisitorAddressId ---
+        self.factory._log("      🔧 Clearing VisitorAddressId to allow deletion...", "DEBUG")
+        
+        try:
+            # Prepare update payload to clear the field
+            update_payload = [{"Id": x, "VisitorAddressId": None} for x in ids_to_delete]
+            results = self.sc.bulk.Location.update(update_payload)
+            
+            success_count = sum(1 for r in results if r.get('success'))
+            if success_count < len(ids_to_delete):
+                self.factory._log(f"      ⚠️ Cleared VisitorAddressId: {success_count}/{len(ids_to_delete)}", "WARN")
+            else:
+                self.factory._log(f"      ✅ Cleared VisitorAddressId for {success_count} records", "SUCCESS")
+                
+        except Exception as e:
+            self.factory._log(f"      ⚠️ Could not clear VisitorAddressId: {e}", "WARN")
+
+        # --- STEP 2: Delete Location (Address auto-cascades) ---
+        super().delete_records(ids_to_delete)
