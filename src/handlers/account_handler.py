@@ -69,6 +69,10 @@ class AccountHandler(BaseHandler):
         """
         # Call base (RETURN FIELDS)
         super().after_insert_batch(batch_items, results, operation)
+
+        # --- ENRICHMENT (PersonContactId) ---
+        if operation == 'insert':
+            self._enrich_contact_ids(batch_items, results)
         
         # --- CONSENT LOGIC ---
         # Detect if we need to process consents
@@ -90,6 +94,66 @@ class AccountHandler(BaseHandler):
 
             if acc_map_consents:
                  self._manage_consents(acc_map_consents)
+
+    def _enrich_contact_ids(self, batch_items, results):
+        """
+        Retrieves PersonContactId for created Accounts and updates key_map.
+        Format: key_map["BaseName.PersonContactId"] = ContactId
+        """
+        # 1. Collect successful Account Ids
+        success_map_idx = {} # { real_id: batch_index }
+        for i, res in enumerate(results):
+            if res['success']:
+                success_map_idx[res['id']] = i
+        
+        if not success_map_idx: return
+
+        account_ids = list(success_map_idx.keys())
+        self.factory._log(f"   🔎 Fetching PersonContactId for {len(account_ids)} Accounts...", "INFO")
+        
+        # 2. Query with Retry
+        contact_map = {} # { AccountId: ContactId }
+        max_retries = 3
+        
+        for attempt in range(1, max_retries + 1):
+            missing_ids = [aid for aid in account_ids if aid not in contact_map]
+            if not missing_ids: break
+            
+            # Chunking query just in case (though batch is small ~20)
+            chunk_size = 200
+            for i in range(0, len(missing_ids), chunk_size):
+                chunk = missing_ids[i:i+chunk_size]
+                ids_str = "'" + "','".join(chunk) + "'"
+                try:
+                    q = f"SELECT Id, PersonContactId FROM Account WHERE Id IN ({ids_str})"
+                    res = self.sc.query_all(q)
+                    for r in res['records']:
+                        pc_id = r.get('PersonContactId')
+                        if pc_id:
+                            contact_map[r['Id']] = pc_id
+                except Exception as e:
+                    self.factory._log(f"      ⚠️ Error querying PersonContactId: {e}", "WARN")
+            
+            if len(contact_map) < len(account_ids):
+                if attempt < max_retries:
+                    time.sleep(2) # Wait for propagation
+                else:
+                    self.factory._log(f"      ❌ Failed to retrieve PersonContactId for some records after {max_retries} attempts.", "ERROR")
+
+        # 3. Update KeyMap
+        count_updated = 0
+        for acc_id, contact_id in contact_map.items():
+            idx = success_map_idx[acc_id]
+            item = batch_items[idx]
+            base_name = item['metadata']['base_name']
+            
+            if base_name:
+                # Append special key
+                key = f"{base_name}.PersonContactId"
+                self.factory.key_map[key] = contact_id
+                count_updated += 1
+                
+        self.factory._log(f"      ✅ Captured {count_updated} PersonContactIds.", "SUCCESS")
 
     def _manage_consents(self, account_map):
         """

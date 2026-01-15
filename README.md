@@ -50,12 +50,62 @@ Uses a Strategy Pattern (`src/handlers/`) to manage object-specific complexities
 ## 🚀 Quick Start
 
 ### 1. Installation
-```bash
-pip install -r requirements.txt
-# Create .env.qa with your credentials
-```
 
-### 2. Run a Scenario
+1.  **Clone the repository**:
+    ```bash
+    git clone <repository_url>
+    cd CrossCloudDDT
+    ```
+
+2.  **Create a virtual environment** (optional but recommended):
+    ```bash
+    python -m venv venv
+    # Windows
+    .\venv\Scripts\activate
+    # Mac/Linux
+    source venv/bin/activate
+    ```
+
+3.  **Install dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+### 2. Environment Configuration
+
+You must create `.env` files for each environment you want to test against (e.g., `.env.stage`, `.env.qa`).
+
+1.  **Create the file**:
+    Create a file named `.env.stage` (or `.env.qa`) in the root directory.
+
+2.  **Add Configuration**:
+    Copy the template below and fill in your credentials.
+
+    ```ini
+    # .env.stage
+
+    # --- Sales Cloud Credentials ---
+    SF_USERNAME=your_username@example.com.sandbox
+    SF_PASSWORD=your_password
+    SF_TOKEN=your_security_token
+    SF_DOMAIN=test
+    # Use 'test' for Sandboxes, 'login' for Production
+
+    # --- Marketing Cloud Credentials ---
+    MC_CLIENT_ID=your_client_id
+    MC_CLIENT_SECRET=your_client_secret
+    MC_ACCOUNT_ID=your_account_id
+
+    # IMPORTANT: MC_SUBDOMAIN must be the tenant-specific prefix ONLY.
+    # If your URL is: https://mc7-15hjr7vb58gpgx89npbmj8xm.rest.marketingcloudapis.com
+    # Then your subdomain is: mc7-15hjr7vb58gpgx89npbmj8xm
+    MC_SUBDOMAIN=mc7-15hjr7vb58gpgx89npbmj8xm
+    ```
+
+    > [!WARNING]
+    > **Marketing Cloud Subdomain**: Do NOT include `.rest.marketingcloudapis.com` or `.auth.marketingcloudapis.com` in `MC_SUBDOMAIN`. Only the unique alphanumeric prefix (often starting with `mc...`).
+
+### 3. Run a Scenario
 Generates data defined in `data/lost_sale/*.csv`:
 ```bash
 python main.py --scenario lost_sale --upsert
