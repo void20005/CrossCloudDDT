@@ -85,10 +85,9 @@ You must create `.env` files for each environment you want to test against (e.g.
     # .env.stage
 
     # --- Sales Cloud Credentials ---
-    SF_USERNAME=your_username@example.com.sandbox
-    SF_PASSWORD=your_password
-    SF_TOKEN=your_security_token
-    SF_DOMAIN=test
+    SC_USERNAME=your_username@example.com.sandbox
+    SC_PASSWORD=your_password
+    SC_DOMAIN=test
     # Use 'test' for Sandboxes, 'login' for Production
 
     # --- Marketing Cloud Credentials ---
@@ -97,9 +96,9 @@ You must create `.env` files for each environment you want to test against (e.g.
     MC_ACCOUNT_ID=your_account_id
 
     # IMPORTANT: MC_SUBDOMAIN must be the tenant-specific prefix ONLY.
-    # If your URL is: https://mc7-15hjr7vb58gpgx89npbmj8xm.rest.marketingcloudapis.com
-    # Then your subdomain is: mc7-15hjr7vb58gpgx89npbmj8xm
-    MC_SUBDOMAIN=mc7-15hjr7vb58gpgx89npbmj8xm
+    # If your URL is: https://mc7-15hjr7vb58gpgx89np.rest.marketingcloudapis.com
+    # Then your subdomain is: mc7-15hjr7vb58gpgx89np
+    MC_SUBDOMAIN=mc7-15hjr7vb58gpgx89np
     ```
 
     > [!WARNING]
