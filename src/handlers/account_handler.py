@@ -207,6 +207,8 @@ class AccountHandler(BaseHandler):
              return
 
         # --- Update Individuals (HasOptedOutSolicit) ---
+        self.factory._log(f"      🔎 Found {len(ind_map)} Individual records linked to these Accounts.", "INFO")
+        
         ind_updates = []
         for ind_id, acc_id in ind_map.items():
             row = account_map[acc_id]
@@ -216,10 +218,13 @@ class AccountHandler(BaseHandler):
         
         if ind_updates:
             try:
+                self.factory._log(f"      📝 Identified {len(ind_updates)} Individuals requiring update...", "INFO")
                 self.sc.bulk.Individual.update(ind_updates)
-                self.factory._log(f"      ⚙ Updated {len(ind_updates)} Individuals", "INFO")
+                self.factory._log(f"      ✅ Successfully updated {len(ind_updates)} Individuals.", "SUCCESS")
             except Exception as e:
                 self.factory._log(f"      ❌ Error updating Individuals: {e}", "ERROR")
+        else:
+             self.factory._log(f"      ℹ️ No Individual updates needed.", "INFO")
 
         # --- PHASE 2: Wait for CPTC ---
         ind_ids = list(ind_map.keys())
@@ -241,7 +246,7 @@ class AccountHandler(BaseHandler):
                  chunk = missing_ind_ids[i:i+chunk_size]
                  ids_str = "'" + "','".join(chunk) + "'"
                  try:
-                     q = f"SELECT Id, PartyId, EngagementChannelType.Name, PrivacyConsentStatus FROM ContactPointTypeConsent WHERE PartyId IN ({ids_str})"
+                     q = f"SELECT Id, PartyId, EngagementChannelType.Name, DataUsePurpose.Name, PrivacyConsentStatus FROM ContactPointTypeConsent WHERE PartyId IN ({ids_str})"
                      res = self.sc.query_all(q)
                      for r in res['records']:
                          pid = r['PartyId']
@@ -263,31 +268,58 @@ class AccountHandler(BaseHandler):
             if not acc_id: continue
             row = account_map[acc_id]
             
-            # Helpers
-            def get_recs(channel):
-                return [r for r in records if r.get('EngagementChannelType') and r['EngagementChannelType']['Name'] == channel]
-            
-            # Email
-            for r in get_recs('Email'):
-                status = row.get('_EmailConsent', 'OptOut')
+            for r in records:
+                # Safely get Channel and Purpose
+                channel_obj = r.get('EngagementChannelType')
+                channel = channel_obj['Name'] if channel_obj else None
+                
+                purpose_obj = r.get('DataUsePurpose')
+                purpose = purpose_obj['Name'] if purpose_obj else None
+                
+                if not channel: continue
+
+                # Determine Target Status
+                # Priority 1: Specific Override (e.g. "_DataUsePurpose_Email:Marketing")
+                status = None
+                
+                if purpose:
+                    specific_key = f"_DataUsePurpose_{channel}:{purpose}"
+                    if specific_key in row:
+                        status = row[specific_key]
+                
+                # Priority 2: General Channel Fallback
+                if status is None:
+                    if channel == 'Email':
+                        status = row.get('_EmailConsent', 'OptOut')
+                    elif channel == 'SMS':
+                        status = row.get('_SMSConsent', 'OptOut')
+                
+                # If we still have no status (unknown channel and no override), skip
+                if status is None:
+                    continue
+
+                # Prepare Update
                 eff_date = row.get('_EffectiveTo__date')
                 upd = {"Id": r['Id'], "PrivacyConsentStatus": status}
-                if status == 'OptIn' and eff_date: upd["EffectiveTo"] = eff_date
-                elif status == 'OptOut': upd["EffectiveTo"] = None
+                
+                if status == 'OptIn' and eff_date: 
+                    upd["EffectiveTo"] = eff_date
+                elif status == 'OptOut': 
+                    upd["EffectiveTo"] = None
+                
                 cptc_updates.append(upd)
-            
-            # SMS
-            for r in get_recs('SMS'):
-                status = row.get('_SMSConsent', 'OptOut')
-                eff_date = row.get('_EffectiveTo__date')
-                upd = {"Id": r['Id'], "PrivacyConsentStatus": status}
-                if status == 'OptIn' and eff_date: upd["EffectiveTo"] = eff_date
-                elif status == 'OptOut': upd["EffectiveTo"] = None
-                cptc_updates.append(upd)
+
+                
+        
+        total_found = sum(len(recs) for recs in cptc_map.values())
+        self.factory._log(f"      🔎 Found {total_found} CPTC records linked to these Accounts.", "INFO")
 
         if cptc_updates:
             try:
+                self.factory._log(f"      � Identified {len(cptc_updates)} records requiring update...", "INFO")
                 self.sc.bulk.ContactPointTypeConsent.update(cptc_updates)
-                self.factory._log(f"      ✅ Updated {len(cptc_updates)} CPTC records (Bulk)", "SUCCESS")
+                self.factory._log(f"      ✅ Successfully updated {len(cptc_updates)} CPTC records.", "SUCCESS")
             except Exception as e:
                 self.factory._log(f"      ❌ Error updating CPTC: {e}", "ERROR")
+        else:
+            self.factory._log(f"      ℹ️ No updates needed (all {total_found} records matched criteria or skipped).", "INFO")

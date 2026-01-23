@@ -24,3 +24,9 @@ __pycache__/
 data/
 *.csv
 ~lock.*
+
+# my temp utilites
+
+temp/
+
+gemini.md

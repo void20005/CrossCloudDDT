@@ -104,6 +104,25 @@ You must create `.env` files for each environment you want to test against (e.g.
     > [!WARNING]
     > **Marketing Cloud Subdomain**: Do NOT include `.rest.marketingcloudapis.com` or `.auth.marketingcloudapis.com` in `MC_SUBDOMAIN`. Only the unique alphanumeric prefix (often starting with `mc...`).
 
+## 🌍 Environment Switching
+
+The tool supports multiple environments (defined in `.env.qa`, `.env.stage`, etc.).
+By default, it uses **QA** (`.env.qa`).
+
+To run on **Stage** (uses `.env.stage`):
+```bash
+# Run creation on Stage
+python main.py --scenario <scenario_name> --env stage
+
+# Run cleanup on Stage
+python main.py --scenario <scenario_name> --env stage --delete
+```
+
+To explicitly run on **QA**:
+```bash
+python main.py --scenario <scenario_name> --env qa
+```
+
 ### 3. Run a Scenario
 Generates data defined in `data/lost_sale/*.csv`:
 ```bash
@@ -218,4 +237,41 @@ cross-cloud-ddt/
 │   ├── lost_sale/
 │   └── ...
 └── tests/                   # Pytest suite
+```
+
+## 🛠️ Utilities
+
+### 1. Clean Subscribers from DEs
+Scans Data Extensions for subscribers and removes them from the **All Subscribers** list.
+- **Input**: CSV file with DE names (Header: `Name` or first column).
+- **Action**: Finds contacts in DEs -> Deletes from `_Subscribers`.
+
+```bash
+# Run on QA (default)
+python utils/clean_subscribers.py --csv path/to/des.csv
+
+# Run on Stage
+python utils/clean_subscribers.py --csv path/to/des.csv --env stage
+```
+
+### 2. Clear (Truncate) Data Extensions
+Completely removes **ALL DATA** from specified Data Extensions. Use with caution!
+- **Input**: CSV file with DE names.
+- **Action**: Truncates the DEs instantly via API.
+
+```bash
+# Run on QA (default)
+python utils/clear_des.py --csv path/to/des.csv
+
+# Run on Stage
+python utils/clear_des.py --csv path/to/des.csv --env stage
+```
+
+### 3. Split Mega-CSV
+Splits a large CSV file with object markers (e.g. `01_Account`, `02_Contact`) in headers into separate files.
+- **Input**: A single CSV file where headers contain prefixes like `01_Account`, `02_Contact`.
+- **Output**: Separate CSV files named sequentially (e.g. `01_Account.csv`, `02_Contact.csv`).
+
+```bash
+python split_csv.py input_file.csv output_folder/
 ```
