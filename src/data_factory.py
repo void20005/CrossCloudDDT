@@ -247,11 +247,15 @@ class Auto360DataFactory:
                 
                 match_id = None
                 
-                # A. Exact Match
-                if p_name and p_name in existing_map:
+                # A. Check internal key_map (Records created in this run)
+                if base_name and base_name in self.key_map:
+                    match_id = self.key_map[base_name]
+
+                # B. Exact Name Match (Records existing in Salesforce)
+                if not match_id and p_name and p_name in existing_map:
                     match_id = existing_map[p_name]
                 
-                # B. Fuzzy Match
+                # C. Fuzzy Match
                 if not match_id and base_name:
                     for sf_name, sf_id in existing_map.items():
                         if base_name in sf_name:
@@ -375,7 +379,7 @@ class Auto360DataFactory:
         for filename in files:
             # Skip _update files during cleanup (they update existing records, not create new sets)
             if '_update' in filename.lower():
-                self._log(f"   Skipping update file: {filename}", "DEBUG")
+                self._log(f"   Skipping update file: {filename}", "INFO")
                 continue
 
             object_name = self._get_object_name(filename)

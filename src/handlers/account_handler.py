@@ -37,30 +37,19 @@ class AccountHandler(BaseHandler):
             child_object='ContactPointTypeConsent',
             foreign_key_field='PartyId'
         )
-
         # --- EXECUTION ---
         # 1. CPTC
         if cptc_ids:
-            try:
-                self.factory._log(f"      🗑️ Cascade Deleting {len(cptc_ids)} related CPTC records...", "INFO")
-                payload = [{"Id": x} for x in list(set(cptc_ids))]
-                self.sc.bulk.ContactPointTypeConsent.delete(payload)
-                self.factory._log(f"      ✅ Deleted related CPTC.", "SUCCESS")
-            except Exception as e:
-                self.factory._log(f"      ❌ Error deleting CPTC: {e}", "ERROR")
+            self.factory._log(f"      🗑️ Cascade Deleting {len(cptc_ids)} related CPTC records...", "INFO")
+            self._bulk_delete('ContactPointTypeConsent', cptc_ids, log_prefix="   ")
 
         # 2. Account (Self)
         super().delete_records(ids_to_delete)
 
         # 3. Individual
         if ind_ids:
-            try:
-                self.factory._log(f"      🗑️ Cascade Deleting {len(ind_ids)} related Individual records...", "INFO")
-                payload = [{"Id": x} for x in ind_ids]
-                self.sc.bulk.Individual.delete(payload)
-                self.factory._log(f"      ✅ Deleted related Individuals.", "SUCCESS")
-            except Exception as e:
-                self.factory._log(f"      ❌ Error deleting Individuals: {e}", "ERROR")
+            self.factory._log(f"      🗑️ Cascade Deleting {len(ind_ids)} related Individual records...", "INFO")
+            self._bulk_delete('Individual', ind_ids, log_prefix="   ")
 
 
     def after_insert_batch(self, batch_items, results, operation='insert'):

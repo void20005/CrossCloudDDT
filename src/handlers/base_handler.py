@@ -17,17 +17,54 @@ class BaseHandler:
     def delete_records(self, ids_to_delete):
         """Standard deletion logic"""
         if not ids_to_delete: return
+        self._bulk_delete(self.object_name, ids_to_delete)
 
+    def _bulk_delete(self, object_name, ids_to_delete, log_prefix=""):
+        """
+        Executes bulk delete and accurately reports success/failure.
+        """
+        if not ids_to_delete: return
+        
         # Deduplicate
         ids_to_delete = list(set(ids_to_delete))
-        self.factory._log(f"      Found {len(ids_to_delete)} records to delete.", "INFO")
+        if not log_prefix:
+            self.factory._log(f"      Found {len(ids_to_delete)} records to delete in {object_name}.", "INFO")
         
         try:
             payload = [{"Id": x} for x in ids_to_delete]
-            getattr(self.sc.bulk, self.object_name).delete(payload)
-            self.factory._log(f"      ✅ Deleted {len(ids_to_delete)} records from {self.object_name}", "SUCCESS")
+            results = getattr(self.sc.bulk, object_name).delete(payload)
+            
+            success_count = 0
+            errors = []
+            
+            for i, res in enumerate(results):
+                if res.get('success'):
+                    success_count += 1
+                else:
+                    err_msg = res.get('errors', [{}])[0].get('message', 'Unknown Error')
+                    status_code = res.get('errors', [{}])[0].get('statusCode', '')
+                    
+                    if status_code == 'ENTITY_IS_DELETED':
+                        success_count += 1 # Treat as success
+                    else:
+                        rec_id = ids_to_delete[i]
+                        errors.append(f"{rec_id}: {err_msg}")
+            
+            pfx = f"      {log_prefix}" if log_prefix else "      "
+            
+            if success_count == len(ids_to_delete):
+                self.factory._log(f"{pfx}✅ Deleted {success_count} records from {object_name}", "SUCCESS")
+            else:
+                self.factory._log(f"{pfx}⚠️ Deleted {success_count}/{len(ids_to_delete)} records from {object_name}", "WARN")
+                if errors:
+                    # Log first few errors
+                    for err in errors[:5]:
+                        self.factory._log(f"{pfx}   ❌ Error: {err}", "ERROR")
+                    if len(errors) > 5:
+                        self.factory._log(f"{pfx}   ... and {len(errors)-5} more errors.", "DEBUG")
+
         except Exception as e:
-            self.factory._log(f"      ❌ Error deleting {self.object_name}: {e}", "ERROR")
+            self.factory._log(f"      ❌ Error deleting {object_name}: {e}", "ERROR")
 
     def after_insert_batch(self, batch_items, results, operation='insert'):
         """

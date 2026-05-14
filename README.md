@@ -71,9 +71,16 @@ Uses a Strategy Pattern (`src/handlers/`) to manage object-specific complexities
     pip install -r requirements.txt
     ```
 
+4.  **Install Playwright browsers** (needed for UI tests):
+    ```bash
+    playwright install
+    ```
+
 ### 2. Environment Configuration
 
-You must create `.env` files for each environment you want to test against (e.g., `.env.stage`, `.env.qa`).
+You must keep one `.env.<env>` file for each environment you want to test against (for example, `.env.stage`, `.env.qa`, `.env.demo`).
+
+This repository already includes sample environment files in the root folder. Update the values inside them with your own credentials.
 
 1.  **Create the file**:
     Create a file named `.env.stage` (or `.env.qa`) in the root directory.
@@ -145,6 +152,27 @@ python main.py --clean "LostSale%"
 python main.py --clean "Test%" --object Opportunity
 python main.py --clean "%SMOT%" --object Vehicle
 ```
+
+### 5. UI Tests with Playwright
+The repository also includes browser-based smoke tests that reuse the Salesforce session ID injected by `conftest.py`.
+
+Run them with pytest:
+```bash
+python -m pytest -v tests/test_ui_login.py
+```
+
+Useful options:
+```bash
+# Choose browser explicitly
+python -m pytest -v tests/test_ui_login.py --browser chromium
+
+# Run the login test only
+python -m pytest -v tests/test_ui_login.py::test_salesforce_login_via_session_id
+```
+
+By default, the browser fixture uses `--browser firefox`. Other supported values are `chromium`, `edge`, and `webkit`.
+
+The UI tests expect the correct `.env.<env>` file to be loaded through `--env` and will use `SF_UI_HOST` if you set it.
 
 ---
 

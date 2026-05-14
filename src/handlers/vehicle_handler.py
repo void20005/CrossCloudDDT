@@ -36,13 +36,8 @@ class VehicleHandler(BaseHandler):
         # --- EXECUTION ---
         # 1. Asset
         if asset_ids:
-            try:
-                self.factory._log(f"      🗑️ Cascade Deleting {len(asset_ids)} related Asset records...", "INFO")
-                payload = [{"Id": x} for x in list(set(asset_ids))]
-                self.sc.bulk.Asset.delete(payload)
-                self.factory._log(f"      ✅ Deleted related Assets.", "SUCCESS")
-            except Exception as e:
-                self.factory._log(f"      ❌ Error deleting Assets: {e}", "ERROR")
+            self.factory._log(f"      🗑️ Cascade Deleting {len(asset_ids)} related Asset records...", "INFO")
+            self._bulk_delete('Asset', asset_ids, log_prefix="   ")
 
         # 2. Vehicle (Self)
         super().delete_records(ids_to_delete)

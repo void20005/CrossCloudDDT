@@ -19,7 +19,16 @@ def split_mega_csv(input_file, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     print(f"📂 Reading: {input_file}")
     
-    with open(input_file, 'r', encoding='utf-8-sig') as f:
+    # Try different encodings
+    file_encoding = 'utf-8-sig'
+    try:
+        with open(input_file, 'r', encoding='utf-8-sig') as f:
+            f.read(1024 * 1024)  # Read up to 1MB to test encoding
+    except UnicodeDecodeError:
+        file_encoding = 'cp1252'
+        print(f"⚠️ Falling back to {file_encoding} encoding")
+        
+    with open(input_file, 'r', encoding=file_encoding) as f:
         reader = csv.reader(f)
         header_row = next(reader)
         
@@ -122,4 +131,8 @@ if __name__ == "__main__":
         print("Usage: python split_csv.py input.csv output_folder/")
         sys.exit(1)
     
-    split_mega_csv(sys.argv[1], sys.argv[2])
+    # Clean arguments (handles trailing backslashes that escape quotes in Windows/PowerShell)
+    input_file = sys.argv[1].rstrip('"')
+    output_dir = sys.argv[2].rstrip('"')
+    
+    split_mega_csv(input_file, output_dir)
